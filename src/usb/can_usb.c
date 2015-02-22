@@ -122,14 +122,14 @@ int can_device_open(can_device_t* dev) {
     }
     
     if (ftdi_device_open(usb_dev->ftdi_dev,
-        config_get_int(&dev->config, CAN_USB_PARAMETER_INTERFACE)) ||
+        config_get_enum(&dev->config, CAN_USB_PARAMETER_INTERFACE)) ||
       ftdi_device_setup(usb_dev->ftdi_dev,
         config_get_int(&dev->config, CAN_USB_PARAMETER_BAUD_RATE),
         config_get_int(&dev->config, CAN_USB_PARAMETER_DATA_BITS),
         config_get_int(&dev->config, CAN_USB_PARAMETER_STOP_BITS),
-        config_get_int(&dev->config, CAN_USB_PARAMETER_PARITY),
-        config_get_int(&dev->config, CAN_USB_PARAMETER_FLOW_CTRL),
-        config_get_int(&dev->config, CAN_USB_PARAMETER_BREAK),
+        config_get_enum(&dev->config, CAN_USB_PARAMETER_PARITY),
+        config_get_enum(&dev->config, CAN_USB_PARAMETER_FLOW_CTRL),
+        config_get_enum(&dev->config, CAN_USB_PARAMETER_BREAK),
         config_get_float(&dev->config, CAN_USB_PARAMETER_TIMEOUT),
         config_get_float(&dev->config, CAN_USB_PARAMETER_LATENCY))) {
       error_blame(&dev->error, &usb_dev->ftdi_dev->error, CAN_ERROR_OPEN);
