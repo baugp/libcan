@@ -44,10 +44,12 @@
 #define CAN_NODE_ID_BROADCAST                     0x0000
 //@}
 
-/** \name SDO Communication Object Identifiers
-  * \brief Predefined SDO object identifiers as specified by CANopen
+/** \name Communication Object Identifiers (COB)
+  * \brief Predefined object identifiers as specified by CANopen
+  *   http://www.canopensolutions.com/english/about_canopen/predefined.shtml
   */
 //@{
+#define CAN_COB_NMT_SEND                          0x0000
 #define CAN_COB_ID_SDO_SEND                       0x0600
 #define CAN_COB_ID_SDO_RECEIVE                    0x0580
 #define CAN_COB_ID_SDO_EMERGENCY                  0x0080

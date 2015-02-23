@@ -263,6 +263,18 @@ int can_usb_device_from_epos(can_usb_device_t* dev, const can_message_t*
       return 8;
   }
 
+  if (message->id == CAN_COB_NMT_SEND) {
+    data[0] = CAN_USB_OPCODE_NMT;
+    data[1] = 0x02;
+    data[2] = 0x00;
+    data[3] = message->content[1]; //node_id
+    data[4] = 0x00;
+    data[5] = message->content[0]; //cmd
+    data[6] = 0x00;
+    data[7] = 0x00;
+    return 8;
+  }
+
   error_setf(&dev->error, CAN_USB_ERROR_CONVERT,
     "Invalid SDO command: 0x%02x", message->content[0]);
   return -dev->error.code;
@@ -272,6 +284,16 @@ int can_usb_device_to_epos(can_usb_device_t* dev, unsigned char* data,
     can_message_t* message) {
   error_clear(&dev->error);
   
+  //NMT
+  if (message->id == CAN_COB_NMT_SEND) {
+    if((data[2] != 0) || (data[3] != 0) || (data[4] != 0) || (data[5] != 0))
+      error_setf(&dev->error, CAN_USB_ERROR_CONVERT,
+        "Invalid NMT command: 0x%02x", message->content[0]);
+    return dev->error.code;
+  }
+
+  //SDO
+  //error code == 0
   if ((data[2] == 0) && (data[3] == 0) && (data[4] == 0) && (data[5] == 0)) {
     switch (message->content[0]) {
       case CAN_CMD_SDO_WRITE_SEND_1_BYTE:
@@ -300,6 +322,7 @@ int can_usb_device_to_epos(can_usb_device_t* dev, unsigned char* data,
     message->content[5] = data[8];
     message->content[4] = data[9];
   }
+  //error code != 0
   else {
     message->id -= CAN_COB_ID_SDO_SEND;
     message->id += CAN_COB_ID_SDO_RECEIVE;

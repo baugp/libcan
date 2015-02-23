@@ -57,6 +57,7 @@
 #define CAN_USB_OPCODE_RESPONSE            0x00
 #define CAN_USB_OPCODE_READ                0x10
 #define CAN_USB_OPCODE_WRITE               0x11
+#define CAN_USB_OPCODE_NMT                 0x0E
 //@}
 
 /** \name Synchronization Characters
@@ -97,14 +98,14 @@ typedef struct can_usb_device_t {
   error_t error;                //!< The most recent device error.
 } can_usb_device_t;
 
-/** \brief Convert a CANopen SDO message into USB data
+/** \brief Convert a CANopen SDO/NMT message into USB data
   * \param[in] dev The sending CAN device for which to convert the message.
-  * \param[in] message The CANopen SDO message to be converted.
+  * \param[in] message The CANopen SDO/NMT message to be converted.
   * \param[out] data An array to store the converted USB data frame.
   * \return The number of bytes in the USB data frame to be sent or the
   *   negative error code.
   * 
-  * This conversion method translates CANopen SDO messages into the EPOS
+  * This conversion method translates CANopen SDO/NMT messages into the EPOS
   * USB protocol.
   */
 int can_usb_device_from_epos(
@@ -112,14 +113,14 @@ int can_usb_device_from_epos(
   const can_message_t* message,
   unsigned char* data);
 
-/** \brief Convert USB data to a CANopen SDO message
+/** \brief Convert USB data to a CANopen SDO/NMT message
   * \param[in] dev The receiving CAN device for which to convert the message.
   * \param[in] data The USB data frame to be converted.
-  * \param[in,out] message The converted CANopen SDO message.
+  * \param[in,out] message The converted CANopen SDO/NMT message.
   * \return The resulting negative error code.
   * 
   * This conversion method translates the EPOS USB protocol into CANopen
-  * SDO messages.
+  * SDO/NMT messages.
   */
 int can_usb_device_to_epos(
   can_usb_device_t* dev,
