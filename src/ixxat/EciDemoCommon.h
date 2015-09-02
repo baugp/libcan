@@ -26,6 +26,25 @@
   #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
 
+/** ECI Demo error check macro @ingroup EciDemo */
+#define ECIDRV_CHECKERROR(FuncName) \
+{\
+  if(ECI_OK == hResult)\
+  {\
+    OS_Printf(#FuncName "...succeeded.\n"); \
+  }\
+  else\
+  {\
+    OS_Printf( #FuncName "...failed with error code: 0x%08X. %s\n", \
+               hResult, \
+               ECIDRV_GetErrorString(hResult)); \
+  }\
+  OS_Fflush(stdout); \
+}
+#if !IXXAT_DEBUG
+#define ECIDRV_CHECKERROR(FuncName) {}
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 // data types
 

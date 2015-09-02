@@ -260,7 +260,7 @@ void EciPrintCtrlMessage(const ECI_CTRL_MESSAGE* pstcCtrlMsg)
       if((ECI_STRUCT_VERSION_V0 == pstcCtrlMsg->u.sCanMessage.dwVer) ||
          (ECI_STRUCT_VERSION_V1 == pstcCtrlMsg->u.sCanMessage.dwVer) )
       {
-        OS_Printf( "Time: %10u, Type: %2u, ID: %08X, Flags: %c%c%c%c%c%c ",
+        OS_Printf( "Time: %10u, Type: %2u, ID: %8X, Flags: %c%c%c%c%c%c ",
                    pstcCtrlMsg->u.sCanMessage.u.V1.dwTime,
                    pstcCtrlMsg->u.sCanMessage.u.V1.uMsgInfo.Bits.type,
                    pstcCtrlMsg->u.sCanMessage.u.V1.dwMsgId,

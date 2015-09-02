@@ -32,13 +32,12 @@
 #include <termios.h>
 #include <math.h>
 
-//#include <libixxat/ixxat.h>
-//#include <libixxat/ixxatlib.h>
 #include "ECI005.h"
+#include "ECI109.h"
+#include "EciDemoCommon.h"
 
 #include <string/string.h>
-
-#include <timer/timer.h>
+//#include <timer/timer.h>
 
 #include "can_ixxat.h"
 
@@ -57,41 +56,30 @@ const char* can_device_name = "CAN-IXXAT";
 config_param_t can_ixxat_default_parameters[] = {
   {CAN_IXXAT_PARAMETER_DEVICE,
     config_param_type_string,
-    "/dev/ixxat_usb0",
+    "pci0",
     "",
-    "Path to the special file of the connected CAN-IXXAT device"},
+    "CAN-IXXAT device interface <pci0|usb0>"},
   {CAN_IXXAT_PARAMETER_BIT_RATE,
     config_param_type_int,
     "1000",
     "[10, 1000]",
     "The requested bit rate of the CAN bus in [kbit/s]"},
-  {CAN_IXXAT_PARAMETER_QUANTA_PER_BIT,
-    config_param_type_int,
-    "8",
-    "[8, 16]",
-    "The requested number of time quanta per bit of the CAN bus"},
-  {CAN_IXXAT_PARAMETER_SAMPLING_POINT,
-    config_param_type_float,
-    "0.75",
-    "[0.75, 0.875]",
-    "The requested synchronization sample point of the CAN bus, "
-    "expressed as a ratio of the second phase buffer segment's "
-    "start time quantum and the number of time quanta per bit"},
   {CAN_IXXAT_PARAMETER_TIMEOUT,
     config_param_type_float,
     "0.01",
     "",
     "The CAN bus communication timeout in [s]"},
+  {CAN_IXXAT_PARAMETER_VERBOSE,
+    config_param_type_bool,
+    "false",
+    "false|true",
+    "Verbose mode"},
 };
 
 const config_default_t can_default_config = {
   can_ixxat_default_parameters,
   sizeof(can_ixxat_default_parameters)/sizeof(config_param_t),
 };
-
-void can_ixxat_device_init(can_ixxat_device_t* dev);
-void can_ixxat_device_destroy(can_ixxat_device_t* dev);
-void can_ixxat_device_handle(int handle, const ECI_CTRL_MESSAGE* msg, void* custom);
 
 int can_device_open(can_device_t* dev) {
   error_clear(&dev->error);
@@ -104,11 +92,10 @@ int can_device_open(can_device_t* dev) {
     dev->num_received = 0;
 
     if (can_ixxat_device_open(dev->comm_dev,
-        config_get_string(&dev->config, CAN_IXXAT_PARAMETER_DEVICE)) ||
+        config_get_string(&dev->config, CAN_IXXAT_PARAMETER_DEVICE),
+        config_get_bool(&dev->config, CAN_IXXAT_PARAMETER_VERBOSE)) ||
       can_ixxat_device_setup(dev->comm_dev,
         config_get_int(&dev->config, CAN_IXXAT_PARAMETER_BIT_RATE),
-        config_get_int(&dev->config, CAN_IXXAT_PARAMETER_QUANTA_PER_BIT),
-        config_get_float(&dev->config, CAN_IXXAT_PARAMETER_SAMPLING_POINT),
         config_get_float(&dev->config, CAN_IXXAT_PARAMETER_TIMEOUT))) {
       error_blame(&dev->error, &((can_ixxat_device_t*)dev->comm_dev)->error,
         CAN_ERROR_OPEN);
@@ -185,14 +172,15 @@ int can_device_receive_message(can_device_t* dev, can_message_t* message) {
 }
 
 void can_ixxat_device_init(can_ixxat_device_t* dev) {
-  dev->handle = 0;
-  dev->fd = 0;
   dev->name = 0;
+  dev->interface = IXXAT_PCI;
+  dev->dwHwIndex = 0;
+  dev->dwCtrlIndex = 0;
+  dev->dwCtrlHandle = 0;
 
   dev->bitrate = 0;
-  dev->quanta_per_bit = 0;
-  dev->sampling_point = 0.0;
   dev->timeout = 0.0;
+  dev->verbose = 0;
 
   memset(&dev->msg_received, 0, sizeof(can_message_t));
 
@@ -204,25 +192,27 @@ void can_ixxat_device_destroy(can_ixxat_device_t* dev) {
   error_destroy(&dev->error);
 }
 
-#include "EciDemoCommon.h"
-/** ECI Demo error check macro @ingroup EciDemo */
-#define ECIDEMO_CHECKERROR(FuncName) \
-{\
-  if(ECI_OK == hResult)\
-  {\
-    OS_Printf(#FuncName "...succeeded.\n"); \
-  }\
-  else\
-  {\
-    OS_Printf( #FuncName "...failed with error code: 0x%08X. %s\n", \
-               hResult, \
-               ECI005_GetErrorString(hResult)); \
-  }\
-}
-#define ECIDEMO_CHECKERROR(FuncName) {}
+//ECI Functions Mapping
+static ECI_RESULT (*ECI_Initialize[])(const DWORD,const ECI_HW_PARA[])                            = {ECI005_Initialize, ECI109_Initialize};
+static ECI_RESULT (*ECI_Release[])(void)                                                          = {ECI005_Release, ECI109_Release};
+static ECI_RESULT (*ECI_GetInfo[])(const DWORD,ECI_HW_INFO*)                                      = {ECI005_GetInfo, ECI109_GetInfo};
+static ECI_RESULT (*ECI_CtrlOpen[])(ECI_CTRL_HDL*,const DWORD,const DWORD,const ECI_CTRL_CONFIG*) = {ECI005_CtrlOpen, ECI109_CtrlOpen};
+static ECI_RESULT (*ECI_CtrlClose[])(const ECI_CTRL_HDL)                                          = {ECI005_CtrlClose, ECI109_CtrlClose};
+static ECI_RESULT (*ECI_CtrlStart[])(const ECI_CTRL_HDL)                                          = {ECI005_CtrlStart, ECI109_CtrlStart};
+static ECI_RESULT (*ECI_CtrlStop[])(const ECI_CTRL_HDL,const DWORD)                               = {ECI005_CtrlStop, ECI109_CtrlStop};
+static ECI_RESULT (*ECI_CtrlGetCapabilities[])(const ECI_CTRL_HDL,ECI_CTRL_CAPABILITIES*)         = {ECI005_CtrlGetCapabilities, ECI109_CtrlGetCapabilities};
+static ECI_RESULT (*ECI_CtrlGetStatus[])(const ECI_CTRL_HDL,ECI_CTRL_STATUS)                      = {ECI005_CtrlGetStatus, ECI109_CtrlGetStatus};
+static ECI_RESULT (*ECI_CtrlSend[])(const ECI_CTRL_HDL,const ECI_CTRL_MESSAGE*,const DWORD)       = {ECI005_CtrlSend, ECI109_CtrlSend};
+static ECI_RESULT (*ECI_CtrlReceive[])(const ECI_CTRL_HDL,DWORD*,ECI_CTRL_MESSAGE*,const DWORD)   = {ECI005_CtrlReceive, ECI109_CtrlReceive};
+static const char* (*ECI_GetErrorString[])(const ECI_RESULT)                                      = {ECI005_GetErrorString, ECI109_GetErrorString};
 
-int can_ixxat_device_open(can_ixxat_device_t* dev, const char* name) {
-//  int result;
+static can_ixxat_device_t* ixxat_can_dev = NULL;
+void ixxat_exit() {
+  if(ixxat_can_dev)
+    can_ixxat_device_close(ixxat_can_dev);
+}
+
+int can_ixxat_device_open(can_ixxat_device_t* dev, const char* name, int verbose) {
 
   error_clear(&dev->error);
 
@@ -240,32 +230,58 @@ int can_ixxat_device_open(can_ixxat_device_t* dev, const char* name) {
   ECI_HW_PARA astcHwPara[4] = {{0}};
   ECI_HW_INFO stcHwInfo     = {0};
   DWORD       dwIndex       = 0;
-  dev->dwHwIndex            = 0;
-  dev->dwCtrlIndex          = 0;
 
-//  OS_Printf("\n>> ECI Demo for CAN-IB1x0 / PCIe (Mini), (104) <<\n");
+  if(string_starts_with_ignore_case(name, "pci"))
+    dev->interface = IXXAT_PCI;
+  else if(string_starts_with_ignore_case(name, "usb"))
+    dev->interface = IXXAT_USB;
+  else
+  {
+    error_setf(&dev->error, CAN_IXXAT_ERROR_OPEN, "Invalid CAN-IXXAT device interface type");
+    return dev->error.code;
+  }
+
+  if((name[3]-'0')>=0 && (name[3]-'0')<=4)
+    dev->dwHwIndex = name[3]-'0';
+  else
+  {
+    error_setf(&dev->error, CAN_IXXAT_ERROR_OPEN, "Invalid CAN-IXXAT device index");
+    return dev->error.code;
+  }
+
+  string_copy(&dev->name, name);
+  dev->verbose = verbose;
 
   //*** Prepare Hardware parameter structure for multiple boards
   for(dwIndex=0; dwIndex < _countof(astcHwPara); dwIndex++)
   {
-    astcHwPara[dwIndex].wHardwareClass = ECI_HW_PCI;
-    #ifdef ECIDEMO_HWUSEPOLLINGMODE
+    if(dev->interface==IXXAT_PCI)
+      astcHwPara[dwIndex].wHardwareClass = ECI_HW_PCI;
+    else if(dev->interface==IXXAT_USB)
+      astcHwPara[dwIndex].wHardwareClass = ECI_HW_USB;
+    #ifdef HWUSEPOLLINGMODE
       astcHwPara[dwIndex].dwFlags = ECI_SETTINGS_FLAG_POLLING_MODE;
-    #endif //ECIDEMO_HWUSEPOLLINGMODE
+    #endif //HWUSEPOLLINGMODE
   }
 
   //*** At first call Initialize to prepare ECI driver
-  hResult = ECI005_Initialize(_countof(astcHwPara), astcHwPara);
-  ECIDEMO_CHECKERROR(ECI005_Initialize);
+  hResult = ECI_Initialize[dev->interface](_countof(astcHwPara), astcHwPara);
+  ECIDRV_CHECKERROR(ECIDRV_Initialize);
 
   //*** Retrieve hardware info
   if(ECI_OK == hResult)
   {
+    //Save ixxat device handle, add it to exit() handler to close the port when programme terminates
+    ixxat_can_dev = dev;
+    atexit(ixxat_exit);
+
     //*** Retrieve hardware info
-    hResult = ECI005_GetInfo(dev->dwHwIndex, &stcHwInfo);
-    ECIDEMO_CHECKERROR(ECI005_GetInfo);
-//    if(ECI_OK == hResult)
-//      {EciPrintHwInfo(&stcHwInfo);}
+    hResult = ECI_GetInfo[dev->interface](dev->dwHwIndex, &stcHwInfo);
+    ECIDRV_CHECKERROR(ECIDRV_GetInfo);
+    if(dev->verbose) {
+      if(ECI_OK == hResult)
+        EciPrintHwInfo(&stcHwInfo);
+    }
   }
 
   //*** Find first CAN Controller of Board
@@ -275,27 +291,15 @@ int can_ixxat_device_open(can_ixxat_device_t* dev, const char* name) {
                                    ECI_CTRL_CAN,
                                    0, //first relative controller
                                    &dev->dwCtrlIndex);
-    if(ECI_OK == hResult)
-    {
-      //*** Start CAN Demo
-//      hResult =  EciCanDemo005(dwHwIndex, dwCtrlIndex);
-//      ECIDEMO_CHECKERROR(EciCanDemo005);
-    }
-    else
-    {
-      //*** Ignore if no controller was found
-//      hResult = ECI_OK;
-    }
   }
 
   if(hResult != ECI_OK)
-    error_setf(&dev->error, CAN_IXXAT_ERROR_OPEN, ECI005_GetErrorString(hResult));
+    error_setf(&dev->error, CAN_IXXAT_ERROR_OPEN, ECI_GetErrorString[dev->interface](hResult));
 
   return dev->error.code;
 }
 
 int can_ixxat_device_close(can_ixxat_device_t* dev) {
-//  int result;
 
   error_clear(&dev->error);
 
@@ -312,8 +316,8 @@ int can_ixxat_device_close(can_ixxat_device_t* dev) {
   //*** Stop Controller
   if(ECI_OK == hResult)
   {
-    hResult = ECI005_CtrlStop(dev->dwCtrlHandle, ECI_STOP_FLAG_NONE);
-    ECIDEMO_CHECKERROR(ECI005_CtrlStop);
+    hResult = ECI_CtrlStop[dev->interface](dev->dwCtrlHandle, ECI_STOP_FLAG_NONE);
+    ECIDRV_CHECKERROR(ECIDRV_CtrlStop);
   }
 
   //*** Wait some time to ensure bus idle
@@ -322,83 +326,43 @@ int can_ixxat_device_close(can_ixxat_device_t* dev) {
   //*** Reset Controller
   if(ECI_OK == hResult)
   {
-    hResult = ECI005_CtrlStop(dev->dwCtrlHandle, ECI_STOP_FLAG_RESET_CTRL);
-    ECIDEMO_CHECKERROR(ECI005_CtrlStop);
+    hResult = ECI_CtrlStop[dev->interface](dev->dwCtrlHandle, ECI_STOP_FLAG_RESET_CTRL);
+    ECIDRV_CHECKERROR(ECIDRV_CtrlStop);
   }
 
   //*** Close ECI Controller
   if(ECI_OK == hResult)
   {
-    ECI005_CtrlClose(dev->dwCtrlHandle);
-    ECIDEMO_CHECKERROR(ECI005_CtrlClose);
+    hResult = ECI_CtrlClose[dev->interface](dev->dwCtrlHandle);
+    ECIDRV_CHECKERROR(ECIDRV_CtrlClose);
     dev->dwCtrlHandle = ECI_INVALID_HANDLE;
+    ixxat_can_dev = NULL;
+  }
+  if(hResult != ECI_OK)
+  {
+      error_setf(&dev->error, CAN_IXXAT_ERROR_CLOSE, ECI_GetErrorString[dev->interface](hResult));
+      OS_Printf(ECI_GetErrorString[dev->interface](hResult));
   }
 
   //*** Clean up ECI driver
-  hResult = ECI005_Release();
-  ECIDEMO_CHECKERROR(ECI005_Release);
+  hResult = ECI_Release[dev->interface]();
+  ECIDRV_CHECKERROR(ECIDRV_Release);
   if(hResult != ECI_OK)
-      error_setf(&dev->error, CAN_IXXAT_ERROR_CLOSE, ECI005_GetErrorString(hResult));
-
-//  OS_Printf("-> Returning from ECI Demo for CAN-IB1x0 / PCIe (Mini), (104) <-\n");
+      error_setf(&dev->error, CAN_IXXAT_ERROR_CLOSE, ECI_GetErrorString[dev->interface](hResult));
 
   return dev->error.code;
 }
 
-int can_ixxat_device_setup(can_ixxat_device_t* dev, int bitrate, int
-  quanta_per_bit, double sampling_point, double timeout) {
-//  int result;
-//  IXXAT_INIT_PARAMS_T* parameters;
+int can_ixxat_device_setup(can_ixxat_device_t* dev, int bitrate, double timeout) {
 
   error_clear(&dev->error);
-
-//  double t = 1.0/(8*bitrate*1e3);
-//  int brp = round(4*t*CAN_IXXAT_CLOCK_FREQUENCY/quanta_per_bit);
-//  int tseg1 = round(quanta_per_bit*sampling_point);
-//  int tseg2 = quanta_per_bit-tseg1;
-
-//  parameters = IXXAT_GetInitParamsPtr(dev->handle);
-//  parameters->canparams.cc_type = SJA1000;
-//  parameters->canparams.cc_params.sja1000.btr0 =
-//    ((CAN_IXXAT_SYNC_JUMP_WIDTH-1) << 6)+(brp-1);
-//  parameters->canparams.cc_params.sja1000.btr1 =
-//    (CAN_IXXAT_TRIPLE_SAMPLING << 7)+((tseg2-1) << 4)+(tseg1-2);
-//  parameters->canparams.cc_params.sja1000.outp_contr = 0xda;
-
-//  parameters->canparams.cc_params.sja1000.acc_code1 = 0xff;
-//  parameters->canparams.cc_params.sja1000.acc_code2 = 0xff;
-//  parameters->canparams.cc_params.sja1000.acc_code3 = 0xff;
-//  parameters->canparams.cc_params.sja1000.acc_mask0 = 0xff;
-//  parameters->canparams.cc_params.sja1000.acc_mask1 = 0xff;
-//  parameters->canparams.cc_params.sja1000.acc_mask2 = 0xff;
-//  parameters->canparams.cc_params.sja1000.acc_mask3 = 0xff;
-//  parameters->canparams.cc_params.sja1000.mode = 0;
-
-//  if (!(result = IXXAT_CANInit(dev->handle, 0))) {
-//    dev->fd = IXXAT_GetFdByHandle(dev->handle);
-
-//    dev->bitrate = bitrate;
-//    dev->quanta_per_bit = quanta_per_bit;
-//    dev->sampling_point = sampling_point;
-//    dev->timeout = timeout;
-
-//    if ((result = IXXAT_Control(dev->handle, CONTR_CAN_Message |
-//        CONTR_CONT_ON)))
-//    error_setf(&dev->error, CAN_IXXAT_ERROR_SETUP, IXXAT_DecodeErrorMsg(result));
-//  }
-//  else
-//    error_setf(&dev->error, CAN_IXXAT_ERROR_SETUP, IXXAT_DecodeErrorMsg(result));
 
   ECI_RESULT            hResult         = ECI_OK;
   ECI_CTRL_CAPABILITIES stcCtrlCaps     = {0};
   dev->dwCtrlHandle    = ECI_INVALID_HANDLE;
   DWORD                 dwCtrlFeatures  = 0;
 
-//  OS_Printf("\n>> ECI CAN Demo <<\n");
-
   dev->bitrate = bitrate;
-  dev->quanta_per_bit = quanta_per_bit;
-  dev->sampling_point = sampling_point;
   dev->timeout = timeout;
 
   //*** Open given controller of given board
@@ -412,8 +376,8 @@ int can_ixxat_device_setup(can_ixxat_device_t* dev, int bitrate, int
   stcCtrlConfig.u.sCanConfig.u.V0.bOpMode  = ECI_CAN_OPMODE_STANDARD;
 
   //*** Open and Initialize given Controller of given board
-  hResult = ECI005_CtrlOpen(&dev->dwCtrlHandle, dev->dwHwIndex, dev->dwCtrlIndex, &stcCtrlConfig);
-  ECIDEMO_CHECKERROR(ECI005_CtrlOpen);
+  hResult = ECI_CtrlOpen[dev->interface](&dev->dwCtrlHandle, dev->dwHwIndex, dev->dwCtrlIndex, &stcCtrlConfig);
+  ECIDRV_CHECKERROR(ECIDRV_CtrlOpen);
 
   //*** Get Controller Capabilities
   if(ECI_OK == hResult)
@@ -421,11 +385,12 @@ int can_ixxat_device_setup(can_ixxat_device_t* dev, int bitrate, int
     //*** Enable ECI structure Version 1 support
     stcCtrlCaps.wCtrlClass       = ECI_CTRL_CAN;
     stcCtrlCaps.u.sCanCaps.dwVer = ECI_STRUCT_VERSION_V1;
-    hResult = ECI005_CtrlGetCapabilities(dev->dwCtrlHandle, &stcCtrlCaps);
-    ECIDEMO_CHECKERROR(ECI005_CtrlGetCapabilities);
+    hResult = ECI_CtrlGetCapabilities[dev->interface](dev->dwCtrlHandle, &stcCtrlCaps);
+    ECIDRV_CHECKERROR(ECIDRV_CtrlGetCapabilities);
     if(ECI_OK == hResult)
     {
-//      EciPrintCtrlCapabilities(&stcCtrlCaps);
+      if(dev->verbose)
+        EciPrintCtrlCapabilities(&stcCtrlCaps);
 
       //*** Check if CAN Controller and if Struct version up to V1 is supported
       if(ECI_CTRL_CAN == stcCtrlCaps.wCtrlClass)
@@ -444,7 +409,54 @@ int can_ixxat_device_setup(can_ixxat_device_t* dev, int bitrate, int
   {
     ECI_CTRL_CONFIG stcCtrlConfig = {0};
     ECI_CANBTP      stcBtpSdr     = ECI_CAN_SDR_BTP_1000KB;
-    ECI_CANBTP      stcBtpFdr     = ECI_CAN_FDR_BTP_8000KB;
+//    ECI_CANBTP      stcBtpFdr     = ECI_CAN_FDR_BTP_8000KB;
+
+    //predefined baud rate settings
+    ECI_CANBTP      stcBtp_10KB = ECI_CAN_BTP_10KB,
+                    stcBtp_20KB = ECI_CAN_BTP_20KB,
+                    stcBtp_50KB = ECI_CAN_BTP_50KB,
+                    stcBtp_100KB = ECI_CAN_BTP_100KB,
+                    stcBtp_125KB = ECI_CAN_BTP_125KB,
+                    stcBtp_250KB = ECI_CAN_BTP_250KB,
+                    stcBtp_500KB = ECI_CAN_BTP_500KB,
+                    stcBtp_800KB = ECI_CAN_BTP_800KB,
+                    stcBtp_1000KB = {0,  1000000,  110, 16, 16, 0}, //SP 87.4%, Recommended by CANOpen
+                    stcBtpSdr_500KB = ECI_CAN_SDR_BTP_500KB,
+                    stcBtpSdr_1000KB = ECI_CAN_SDR_BTP_1000KB;
+
+    switch(dev->bitrate)
+    {
+      case 10:
+        stcBtpSdr = stcBtp_10KB;
+        break;
+      case 20:
+        stcBtpSdr = stcBtp_20KB;
+        break;
+      case 50:
+        stcBtpSdr = stcBtp_50KB;
+        break;
+      case 100:
+        stcBtpSdr = stcBtp_100KB;
+        break;
+      case 125:
+        stcBtpSdr = stcBtp_125KB;
+        break;
+      case 250:
+        stcBtpSdr = stcBtp_250KB;
+        break;
+      case 500:
+        stcBtpSdr = stcBtp_500KB;
+        break;
+      case 800:
+        stcBtpSdr = stcBtp_800KB;
+        break;
+      case 1000:
+        stcBtpSdr = stcBtp_1000KB;
+        break;
+      default:
+        error_setf(&dev->error, CAN_IXXAT_ERROR_SETUP, "Invalid baud rate");
+        return dev->error.code;
+    }
 
     //*** Prepare Config struct
     stcCtrlConfig.wCtrlClass                       = ECI_CTRL_CAN;
@@ -452,39 +464,32 @@ int can_ixxat_device_setup(can_ixxat_device_t* dev, int bitrate, int
     stcCtrlConfig.u.sCanConfig.u.V1.bOpMode        = ECI_CAN_OPMODE_STANDARD | ECI_CAN_OPMODE_EXTENDED;
     stcCtrlConfig.u.sCanConfig.u.V1.bOpMode       |= (dwCtrlFeatures & ECI_CAN_FEATURE_ERRFRAME) ? ECI_CAN_OPMODE_ERRFRAME : 0;
     stcCtrlConfig.u.sCanConfig.u.V1.bExMode       |= (dwCtrlFeatures & ECI_CAN_FEATURE_EXTDATA)  ? ECI_CAN_EXMODE_EXTDATA  : 0;
-    stcCtrlConfig.u.sCanConfig.u.V1.bExMode       |= (dwCtrlFeatures & ECI_CAN_FEATURE_FASTDATA) ? ECI_CAN_EXMODE_FASTDATA : 0;
+//    stcCtrlConfig.u.sCanConfig.u.V1.bExMode       |= (dwCtrlFeatures & ECI_CAN_FEATURE_FASTDATA) ? ECI_CAN_EXMODE_FASTDATA : 0;
     stcCtrlConfig.u.sCanConfig.u.V1.sBtpSdr        = stcBtpSdr;
-    if(dwCtrlFeatures & ECI_CAN_FEATURE_FASTDATA)
-    {
-      stcCtrlConfig.u.sCanConfig.u.V1.sBtpFdr      = stcBtpFdr;
-    }
+//    if(dwCtrlFeatures & ECI_CAN_FEATURE_FASTDATA)
+//      stcCtrlConfig.u.sCanConfig.u.V1.sBtpFdr      = stcBtpFdr;
 
     //*** Re-configure given Controller of given board
-    hResult = ECI005_CtrlOpen(&dev->dwCtrlHandle, dev->dwHwIndex, dev->dwCtrlIndex, &stcCtrlConfig);
-    ECIDEMO_CHECKERROR(ECI005_CtrlOpen);
+    hResult = ECI_CtrlOpen[dev->interface](&dev->dwCtrlHandle, dev->dwHwIndex, dev->dwCtrlIndex, &stcCtrlConfig);
+    ECIDRV_CHECKERROR(ECIDRV_CtrlOpen);
   }
 
   //*** Start Controller
   if(ECI_OK == hResult)
   {
-    hResult = ECI005_CtrlStart(dev->dwCtrlHandle);
-    ECIDEMO_CHECKERROR(ECI005_CtrlStart);
+    hResult = ECI_CtrlStart[dev->interface](dev->dwCtrlHandle);
+    ECIDRV_CHECKERROR(ECIDRV_CtrlStart);
   }
+
+  if(ECI_OK != hResult)
+    error_setf(&dev->error, CAN_IXXAT_ERROR_SETUP, ECI_GetErrorString[dev->interface](hResult));
 
   return dev->error.code;
 }
 
 int can_ixxat_device_send(can_ixxat_device_t* dev, const can_message_t* message) {
-//  IXXAT_CAN_MSG_T msg = {0x00L, 0, {0, 0, 0, 0, 0, 0, 0, 0}};
-//  struct timeval time;
-//  fd_set set;
-//  int result;
 
   error_clear(&dev->error);
-
-//  msg.id = message->id;
-//  msg.length = message->length;
-//  memcpy(msg.msg, message->content, message->length);
 
 //  time.tv_sec = 0;
 //  time.tv_usec = dev->timeout*1e6;
@@ -507,36 +512,57 @@ int can_ixxat_device_send(can_ixxat_device_t* dev, const can_message_t* message)
   ECI_RESULT       hResult      = ECI_OK;
   ECI_CTRL_MESSAGE stcCtrlMsg   = {0};
 
-//  OS_Printf("Now, sending a CAN Message\n");
-
   //*** Prepare CAN Message to send
   stcCtrlMsg.wCtrlClass                            = ECI_CTRL_CAN;
   stcCtrlMsg.u.sCanMessage.dwVer                   = ECI_STRUCT_VERSION_V1;
   stcCtrlMsg.u.sCanMessage.u.V1.dwMsgId            = message->id;
+  stcCtrlMsg.u.sCanMessage.u.V1.uMsgInfo.Bits.rtr  = message->rtr;
   stcCtrlMsg.u.sCanMessage.u.V1.uMsgInfo.Bits.dlc  = message->length;
   memcpy(stcCtrlMsg.u.sCanMessage.u.V1.abData, message->content, message->length);
 
-//  OS_Printf("\n");
-//  EciPrintCtrlMessage(&stcCtrlMsg);
-//  OS_Printf("\n");
-//  OS_Fflush(stdout);
+  if(dev->verbose) {
+    OS_Printf("CAN Tx> ");
+    EciPrintCtrlMessage(&stcCtrlMsg);
+    OS_Printf("\n");
+  }
 
   //*** Send one message
-  hResult = ECI005_CtrlSend( dev->dwCtrlHandle, &stcCtrlMsg, dev->timeout*1000);
+  hResult = ECI_CtrlSend[dev->interface]( dev->dwCtrlHandle, &stcCtrlMsg, dev->timeout*1000);
   if(ECI_OK != hResult)
   {
-    OS_Printf("Error while sending CAN Messages\n");
-    ECIDEMO_CHECKERROR(ECI005_CtrlSend);
-    hResult = ECI_OK;
+    if(dev->verbose)
+      OS_Printf("Error while sending CAN Messages\n");
+    ECIDRV_CHECKERROR(ECIDRV_CtrlSend);
+    error_setf(&dev->error, CAN_IXXAT_ERROR_SEND, ECI_GetErrorString[dev->interface](hResult));
   }
 
   return dev->error.code;
 }
 
+const char *ixxat_status_frame[] =
+{
+  "Transmission pending",
+  "Data overrun occurred",
+  "Error warning limit exceeded",
+  "Bus off status",
+  "Init mode active",
+  "Bus coupling error",
+  "Acknowledge error"
+};
+
+const char *ixxat_error_frame[] =
+{
+  "Unknown or no error",
+  "Stuff error",
+  "Form error",
+  "Acknowledgment error",
+  "Bit error",
+  "Fast data bit error (CAN FD)",
+  "CRC error",
+  "Other (unspecified) error"
+};
+
 int can_ixxat_device_receive(can_ixxat_device_t* dev, can_message_t* message) {
-//  struct timeval time;
-//  fd_set set;
-//  int result;
 
   error_clear(&dev->error);
 
@@ -560,37 +586,102 @@ int can_ixxat_device_receive(can_ixxat_device_t* dev, can_message_t* message) {
 
   //*** Try to receive some CAN Messages
   ECI_CTRL_MESSAGE stcCtrlMsg    = {0};
-  DWORD            dwStartTime   = 0;
-  DWORD            dwCurrentTime = 0;
   DWORD            dwCount       = 0;
 
-  //*** Receive Messages
-//  OS_Printf("Now, receiving CAN Messages for %0.3f seconds\n", dev->timeout);
-
   dwCount = 1;
-  hResult = ECI005_CtrlReceive( dev->dwCtrlHandle, &dwCount, &stcCtrlMsg, dev->timeout*1000);
+  hResult = ECI_CtrlReceive[dev->interface]( dev->dwCtrlHandle, &dwCount, &stcCtrlMsg, dev->timeout*1000);
   if((ECI_OK == hResult) && (dwCount > 0))
   {
-//    OS_Printf("\n");
-//    EciPrintCtrlMessage(&stcCtrlMsg);
-//    OS_Fflush(stdout);
+    if(dev->verbose) {
+      OS_Printf("CAN Rx> ");
+      EciPrintCtrlMessage(&stcCtrlMsg);
+      OS_Printf("\n");
+    }
+    if(stcCtrlMsg.u.sCanMessage.u.V1.uMsgInfo.Bits.type != ECI_CAN_MSGTYPE_DATA)
+    {
+      switch(stcCtrlMsg.u.sCanMessage.u.V1.uMsgInfo.Bits.type)
+      {
+        case ECI_CAN_MSGTYPE_INFO:
+          if(dev->verbose)
+            OS_Printf("Info frame received\n");
+          error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, "Info frame received");
+          break;
+
+        case ECI_CAN_MSGTYPE_ERROR:
+          if(dev->verbose) {
+            OS_Printf("Error frame received: ");
+            OS_Printf(ixxat_error_frame[stcCtrlMsg.u.sCanMessage.u.V1.abData[0]]);
+            OS_Printf("\n");
+          }
+          error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ixxat_error_frame[stcCtrlMsg.u.sCanMessage.u.V1.abData[0]]);
+          break;
+
+        case ECI_CAN_MSGTYPE_STATUS:
+          OS_Printf("Status frame received: ");
+          if(stcCtrlMsg.u.sCanMessage.u.V1.abData[0] & ECI_CAN_STATUS_TXPEND)
+          {
+            if(dev->verbose)
+              OS_Printf(ixxat_status_frame[0]);
+            error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ixxat_status_frame[0]);
+          }
+          if(stcCtrlMsg.u.sCanMessage.u.V1.abData[0] & ECI_CAN_STATUS_OVRRUN)
+          {
+            if(dev->verbose)
+              OS_Printf(ixxat_status_frame[1]);
+            error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ixxat_status_frame[1]);
+          }
+          if(stcCtrlMsg.u.sCanMessage.u.V1.abData[0] & ECI_CAN_STATUS_ERRLIM)
+          {
+            if(dev->verbose)
+              OS_Printf(ixxat_status_frame[2]);
+            error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ixxat_status_frame[2]);
+          }
+          if(stcCtrlMsg.u.sCanMessage.u.V1.abData[0] & ECI_CAN_STATUS_BUSOFF)
+          {
+            if(dev->verbose)
+              OS_Printf(ixxat_status_frame[3]);
+            error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ixxat_status_frame[3]);
+          }
+          if(stcCtrlMsg.u.sCanMessage.u.V1.abData[0] & ECI_CAN_STATUS_ININIT)
+          {
+            if(dev->verbose)
+              OS_Printf(ixxat_status_frame[4]);
+            error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ixxat_status_frame[4]);
+          }
+          if(stcCtrlMsg.u.sCanMessage.u.V1.abData[0] & ECI_CAN_STATUS_BUSCERR)
+          {
+            if(dev->verbose)
+              OS_Printf(ixxat_status_frame[5]);
+            error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ixxat_status_frame[5]);
+          }
+          if(stcCtrlMsg.u.sCanMessage.u.V1.abData[0] & ECI_CAN_STATUS_ACKERR)
+          {
+            if(dev->verbose)
+              OS_Printf(ixxat_status_frame[6]);
+            error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ixxat_status_frame[6]);
+          }
+          OS_Printf("\n");
+          break;
+      }
+    }
 
     dev->msg_received.id = stcCtrlMsg.u.sCanMessage.u.V1.dwMsgId;
     memcpy(dev->msg_received.content, stcCtrlMsg.u.sCanMessage.u.V1.abData, stcCtrlMsg.u.sCanMessage.u.V1.uMsgInfo.Bits.dlc);
     dev->msg_received.length = stcCtrlMsg.u.sCanMessage.u.V1.uMsgInfo.Bits.dlc;
     *message = dev->msg_received;
-  }//endif
+  }
   else
   {
-//    OS_Printf(".");
-//    OS_Fflush(stdout);
+    if(dev->verbose)
+      OS_Printf("Error while receiving CAN Messages\n");
+    ECIDRV_CHECKERROR(ECIDRV_CtrlReceive);
+    error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ECI_GetErrorString[dev->interface](hResult));
   }
-//  OS_Printf("\n");
 
   return dev->error.code;
 }
 
-void can_ixxat_device_handle(int handle, const ECI_CTRL_MESSAGE* msg, void* custom) {
+//void can_ixxat_device_handle(int handle, const ECI_CTRL_MESSAGE* msg, void* custom) {
 //  can_ixxat_device_t* dev = custom;
 
 //  dev->msg_received.id = msg->msg.canmsg.id;
@@ -598,4 +689,4 @@ void can_ixxat_device_handle(int handle, const ECI_CTRL_MESSAGE* msg, void* cust
 //  memcpy(dev->msg_received.content, msg->msg.canmsg.msg,
 //    msg->msg.canmsg.length);
 //  dev->msg_received.length = msg->msg.canmsg.length;
-}
+//}

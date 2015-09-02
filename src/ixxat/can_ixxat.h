@@ -38,18 +38,19 @@
 //@{
 #define CAN_IXXAT_PARAMETER_DEVICE           "ixxat-dev"
 #define CAN_IXXAT_PARAMETER_BIT_RATE         "ixxat-bit-rate"
-#define CAN_IXXAT_PARAMETER_QUANTA_PER_BIT   "ixxat-quanta-per-bit"
-#define CAN_IXXAT_PARAMETER_SAMPLING_POINT   "ixxat-sampling-point"
+//#define CAN_IXXAT_PARAMETER_QUANTA_PER_BIT   "ixxat-quanta-per-bit"
+//#define CAN_IXXAT_PARAMETER_SAMPLING_POINT   "ixxat-sampling-point"
 #define CAN_IXXAT_PARAMETER_TIMEOUT          "ixxat-timeout"
+#define CAN_IXXAT_PARAMETER_VERBOSE          "ixxat-verbose"
 //@}
 
 /** \name Constants
   * \brief Predefined CAN-IXXAT constants
   */
 //@{
-#define CAN_IXXAT_CLOCK_FREQUENCY            16e6
-#define CAN_IXXAT_SYNC_JUMP_WIDTH            1
-#define CAN_IXXAT_TRIPLE_SAMPLING            0
+//#define CAN_IXXAT_CLOCK_FREQUENCY            40e6
+//#define CAN_IXXAT_SYNC_JUMP_WIDTH            1
+//#define CAN_IXXAT_TRIPLE_SAMPLING            0
 //@}
 
 /** \name Error Codes
@@ -76,20 +77,23 @@
   */
 extern const char* can_ixxat_errors[];
 
+typedef enum {
+  IXXAT_PCI = 0,
+  IXXAT_USB
+}IXXAT_INTERFACE;
+
 /** \brief CAN-IXXAT device structure
   */
 typedef struct can_ixxat_device_t {
-  int handle;                   //!< Device handle.
-  DWORD dwHwIndex;
-  int fd;                       //!< File descriptor
-  DWORD dwCtrlIndex;
-  ECI_CTRL_HDL dwCtrlHandle;
   char* name;                   //!< Device name.
+  IXXAT_INTERFACE interface;
+  DWORD dwHwIndex;
+  DWORD dwCtrlIndex;
+  ECI_CTRL_HDL dwCtrlHandle;    //!< Device handle.
 
   int bitrate;                  //!< Device bitrate in [kbit/s].
-  int quanta_per_bit;           //!< Number of quanta per bit.
-  double sampling_point;        //!< Sampling point in the range [0, 1].
   double timeout;               //!< Device select timeout in [s].
+  int verbose;                  //!< Verbose mode.
 
   can_message_t msg_received;   //!< The most recent message received.
   
@@ -99,11 +103,11 @@ typedef struct can_ixxat_device_t {
 /** \brief Open the CAN-IXXAT device with the specified name
   * \param[in] dev The CAN-IXXAT device to be opened.
   * \param[in] name The name of the CAN-IXXAT to be opened.
+  * \param[in] verbose Debugging mode.
   * \return The resulting error code.
   */
-int can_ixxat_device_open(
-  can_ixxat_device_t* dev,
-  const char* name);
+int can_ixxat_device_open(can_ixxat_device_t* dev,
+  const char* name, int verbose);
 
 /** \brief Close an open CAN-IXXAT device
   * \param[in] dev The open CAN-IXXAT device to be closed.
@@ -115,17 +119,11 @@ int can_ixxat_device_close(
 /** \brief Setup an already opened CAN-IXXAT device
   * \param[in] dev The open serial CAN-IXXAT to be set up.
   * \param[in] bitrate The device bitrate to be set in [kbit/s].
-  * \param[in] quanta_per_bit The device's number of quanta per bit.
-  * \param[in] sampling_point The sampling point in the range [0, 1].
   * \param[in] timeout The device select timeout to be set in [s].
   * \return The resulting error code.
   */
-int can_ixxat_device_setup(
-  can_ixxat_device_t* dev,
-  int bitrate,
-  int quanta_per_bit,
-  double sampling_point,
-  double timeout);
+int can_ixxat_device_setup(can_ixxat_device_t* dev,
+  int bitrate, double timeout);
 
 /** \brief Send a CANopen SDO message over an open CAN-IXXAT device
   * \param[in] dev The open CAN-IXXAT device to send the message over.

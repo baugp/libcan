@@ -49,10 +49,20 @@
   *   http://www.canopensolutions.com/english/about_canopen/predefined.shtml
   */
 //@{
-#define CAN_COB_NMT_SEND                          0x0000
-#define CAN_COB_ID_SDO_SEND                       0x0600
-#define CAN_COB_ID_SDO_RECEIVE                    0x0580
+#define CAN_COB_ID_NMT_SEND                       0x0000
+#define CAN_COB_ID_SYNC                           0x0080
+#define CAN_COB_ID_SDO_SEND                       0x0600  //Host to Device
+#define CAN_COB_ID_SDO_RECEIVE                    0x0580  //Device to Host
 #define CAN_COB_ID_SDO_EMERGENCY                  0x0080
+#define CAN_COD_ID_NMT_MONITOR                    0x0700
+#define CAN_COB_ID_PDO1_SEND                      0x0200  //Host to Device
+#define CAN_COB_ID_PDO1_RECEIVE                   0x0180  //Device to Host
+#define CAN_COB_ID_PDO2_SEND                      0x0300  //Host to Device
+#define CAN_COB_ID_PDO2_RECEIVE                   0x0280  //Device to Host
+#define CAN_COB_ID_PDO3_SEND                      0x0400  //Host to Device
+#define CAN_COB_ID_PDO3_RECEIVE                   0x0380  //Device to Host
+#define CAN_COB_ID_PDO4_SEND                      0x0500  //Host to Device
+#define CAN_COB_ID_PDO4_RECEIVE                   0x0480  //Device to Host
 //@}
 
 /** \name SDO Commands
@@ -75,8 +85,18 @@
 #define CAN_CMD_SDO_READ_RECEIVE_N_BYTE_SEGMENT   0x60
 #define CAN_CMD_SDO_READ_SEND                     0x40
 
-#define CAN_CMD_SDO_ABORT                         0xC0
+#define CAN_CMD_SDO_ABORT                         0x80
 //@}
+
+/** \name NMT States
+  */
+//@{
+#define CAN_NMT_STATE_STOPPED                     0x04
+#define CAN_NMT_STATE_PREOPERATIONAL              0x7F
+#define CAN_NMT_STATE_OPERATIONAL                 0x05
+#define CAN_NMT_STATE_BOOT                        0x00
+//@}
+
 
 /** \name Error Codes
   * \brief Predefined CAN error codes
@@ -106,6 +126,7 @@ extern const char* can_errors[];
   */
 typedef struct can_message_t {
   int id;                     //!< The CAN message identifier.
+  unsigned char rtr;          //!< The remote frame flag
 
   unsigned char content[8];   //!< The actual CAN message content.
   size_t length;              //!< The length of the CAN message.
