@@ -85,4 +85,5 @@ int can_device_init_config_parse(can_device_t* dev, config_parser_t* parser,
 void can_device_destroy(can_device_t* dev) {
   config_destroy(&dev->config);
   error_destroy(&dev->error);
+  free(dev);
 }

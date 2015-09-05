@@ -81,6 +81,9 @@ const config_default_t can_default_config = {
   sizeof(can_ixxat_default_parameters)/sizeof(config_param_t),
 };
 
+void can_ixxat_device_init(can_ixxat_device_t* dev);
+void can_ixxat_device_destroy(can_ixxat_device_t* dev);
+
 int can_device_open(can_device_t* dev) {
   error_clear(&dev->error);
 
