@@ -620,7 +620,8 @@ int can_ixxat_device_receive(can_ixxat_device_t* dev, can_message_t* message) {
           break;
 
         case ECI_CAN_MSGTYPE_STATUS:
-          OS_Printf("Status frame received: ");
+          if(dev->verbose)
+            OS_Printf("Status frame received: ");
           if(stcCtrlMsg.u.sCanMessage.u.V1.abData[0] & ECI_CAN_STATUS_TXPEND)
           {
             if(dev->verbose)
@@ -663,7 +664,8 @@ int can_ixxat_device_receive(can_ixxat_device_t* dev, can_message_t* message) {
               OS_Printf(ixxat_status_frame[6]);
             error_setf(&dev->error, CAN_IXXAT_ERROR_RECEIVE, ixxat_status_frame[6]);
           }
-          OS_Printf("\n");
+          if(dev->verbose)
+            OS_Printf("\n");
           break;
       }
     }
